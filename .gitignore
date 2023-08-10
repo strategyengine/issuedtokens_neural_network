@@ -1,0 +1,39 @@
+/bin/
+deploy.sh
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+fsedistributionservice.tar.gz
+*.dump
+deploy.sh
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+.mvn
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+/.apt_generated_tests/

@@ -1,0 +1,31 @@
+{
+	"ledger_index": 73311179,
+	"ledger_hash": "FA7BD0A4623DF92395ADCD3A754FB40A6A77A536D49C4937F92C9F231E9412DA",
+	"ledger_close": "2022-Jul-28 14:00:00.000000000 UTC",
+	"ledger_close_ms": 712332000,
+	"issuers": {
+		"rDN4Ux1WFJJsPCdqdfZgrDZ2icxdAmg2w": {
+			"data": {
+				"resolvedBy": "XRPScan",
+				"account": "rDN4Ux1WFJJsPCdqdfZgrDZ2icxdAmg2w",
+				"username": "SEC Coin",
+				"domain": "seccoin.co",
+				"twitter": "NottheSEC2",
+				"verified": true,
+				"kyc": true
+			},
+			"tokens": [{
+				"currency": "SEC",
+				"amount": 7809517.13752432,
+				"trustlines": 34532,
+				"holders": 13249,
+				"offers": 342,
+				"created": {
+					"date": "2021-05-19T19:03:30Z",
+					"hash": "59BF1C2D23E6D46BCF00AA1571BF4BA04DC16FBF139850118E9516CE26AFA586"
+				},
+				"self_assessment": null
+			}]
+		}
+	}
+}
