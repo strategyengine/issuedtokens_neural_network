@@ -48,6 +48,7 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 	@Autowired
 	private IssuedTokenStatRepo issuedTokenStatRepo;
 
+	//TODO -- add XRP price for each row
 	int FIELD_CREATE_DATE = 0;
 	int FIELD_ISSUED_AMOUNT = 1;
 	int FIELD_TRUSTLINES = 2;
@@ -166,7 +167,9 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 	private PredictionConfig runScenario(int epochRun, double learningRateRun, int numHiddenNodes, int numEpochs,
 			LossFunction lossFunction, PredictionConfig best, int tokenId) {
 		runCount++;
-		log.info("Runs " + runCount);
+		if(runCount%20==0) {
+			log.info("Runs " + runCount);
+		}
 		try {
 			Map<Integer, Prediction> predictions = trainAndPredict(epochRun, numHiddenNodes, learningRateRun,
 					lossFunction, tokenId);
@@ -351,12 +354,8 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			}
 
 			double expectedPrice = statsForToken.get(i + predictDaysInFuture).getPrice().doubleValue();
-
-			if (predictedPrices[i] > expectedPrice) {
-				totalErrors += predictedPrices[i] - expectedPrice;
-			} else {
-				totalErrors += expectedPrice - predictedPrices[i];
-			}
+			
+			totalErrors += Math.abs(predictedPrices[i] - expectedPrice);
 
 		}
 
