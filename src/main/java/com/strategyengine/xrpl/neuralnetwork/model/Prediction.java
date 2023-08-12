@@ -21,6 +21,8 @@ public class Prediction {
 
 	private String token;
 	
+	private double sumErrors;
+	
 	private List<PredictionDate> predictionDates;
 	
 	private double mostRecentPrice;

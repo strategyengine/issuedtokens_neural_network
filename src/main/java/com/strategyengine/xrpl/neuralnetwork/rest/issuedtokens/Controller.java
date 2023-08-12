@@ -2,11 +2,12 @@ package com.strategyengine.xrpl.neuralnetwork.rest.issuedtokens;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.strategyengine.xrpl.neuralnetwork.model.PredictionConfig;
-import com.strategyengine.xrpl.neuralnetwork.service.XRPLPricePredictorService;
+import com.strategyengine.xrpl.neuralnetwork.service.XRPLTokenPredictorService;
 
 import io.swagger.annotations.Api;
 import lombok.extern.log4j.Log4j2;
@@ -16,16 +17,27 @@ import lombok.extern.log4j.Log4j2;
 @RestController
 public class Controller {
 
+
 	@VisibleForTesting
 	@Autowired
-	protected XRPLPricePredictorService xRPLPricePredictorService;
-
+	protected XRPLTokenPredictorService xRPLTokenPredictorService;
 	
-	@GetMapping(value = "/learning/predict/issuedtoken/price")
-	public PredictionConfig getHolderofferbyvalueById() {
+	@GetMapping(value = "/learning/predict/model/train}")
+	public void trainModel() {
 		
-		return xRPLPricePredictorService.trainAndPredict();
+		long start = System.currentTimeMillis();
+	    xRPLTokenPredictorService.retrainModel();
+		
+		double minutes = (System.currentTimeMillis()-start)/1000/60;
+		log.info("Model Retrained in minutes : " + minutes);
 		
 	}
+
 	
+	@GetMapping(value = "/learning/predict/issuedtoken/price/{tokenId}")
+	public PredictionConfig getHolderofferbyvalueById(@PathVariable int tokenId) {
+		
+		return xRPLTokenPredictorService.trainAndPredict(tokenId);
+		
+	}
 }

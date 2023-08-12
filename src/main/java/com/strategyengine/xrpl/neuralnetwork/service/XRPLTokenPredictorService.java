@@ -2,8 +2,11 @@ package com.strategyengine.xrpl.neuralnetwork.service;
 
 import com.strategyengine.xrpl.neuralnetwork.model.PredictionConfig;
 
-public interface XRPLPricePredictorService {
+public interface XRPLTokenPredictorService {
 
-	PredictionConfig trainAndPredict();
+
+	PredictionConfig trainAndPredict(int tokenId);
+
+	PredictionConfig retrainModel();
 
 }

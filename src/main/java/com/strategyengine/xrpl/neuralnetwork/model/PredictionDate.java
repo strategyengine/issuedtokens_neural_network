@@ -25,7 +25,7 @@ public class PredictionDate {
 	@JsonFormat(pattern="yyyy-MM-dd")
 	private Date date;
 		
-	private double[] price;
+	private double price;
 
 	
 }
