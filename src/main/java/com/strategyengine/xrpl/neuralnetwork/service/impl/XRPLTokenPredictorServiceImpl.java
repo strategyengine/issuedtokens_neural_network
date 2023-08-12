@@ -5,6 +5,7 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.Sort.Direction;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.strategyengine.xrpl.neuralnetwork.entity.IssuedTokenEnt;
@@ -31,6 +33,7 @@ import com.strategyengine.xrpl.neuralnetwork.model.PredictionDate;
 import com.strategyengine.xrpl.neuralnetwork.process.model.NeuralNetworkModel;
 import com.strategyengine.xrpl.neuralnetwork.repo.IssuedTokenRepo;
 import com.strategyengine.xrpl.neuralnetwork.repo.IssuedTokenStatRepo;
+import com.strategyengine.xrpl.neuralnetwork.rest.exception.BadRequestException;
 import com.strategyengine.xrpl.neuralnetwork.service.XRPLTokenPredictorService;
 
 import lombok.extern.log4j.Log4j2;
@@ -65,8 +68,31 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 	private NeuralNetworkModel bestModel = null;
 	
 	private NeuralNetworkModel model = null;
-
+	
 	@Override
+	public Prediction predict(int tokenId) {
+		
+		if(bestModel == null) {
+			throw new BadRequestException("No model trained yet, please try back later");
+		}
+		
+		Optional<IssuedTokenEnt> issuedToken = issuedTokenRepo.findById(tokenId);
+		
+		if(issuedToken.isEmpty()) {
+			throw new BadRequestException("No issued token found for " + tokenId);
+		}
+		
+		return this.predict(issuedToken.get(), bestModel);
+	}
+
+	//every 7 days
+	@Scheduled(fixedRate=1000*60*60*24*7)
+	@Override
+	public PredictionConfig retrainModel() {
+		return this.trainAndPredict(6050);//FSE token used to validation
+	}
+
+	
 	public PredictionConfig trainAndPredict(int tokenId) {
 
 		int numHiddenNodes = 1;// 1;//5;//10;20;
@@ -353,11 +379,5 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		inputData[idx][FIELD_PRICE] = stat.getPrice().doubleValue();
 
 	}
-
-	@Override
-	public PredictionConfig retrainModel() {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
+	
 }

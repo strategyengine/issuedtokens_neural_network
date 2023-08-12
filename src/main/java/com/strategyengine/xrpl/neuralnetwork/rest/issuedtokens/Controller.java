@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.strategyengine.xrpl.neuralnetwork.model.PredictionConfig;
+import com.strategyengine.xrpl.neuralnetwork.model.Prediction;
 import com.strategyengine.xrpl.neuralnetwork.service.XRPLTokenPredictorService;
 
 import io.swagger.annotations.Api;
@@ -22,6 +22,7 @@ public class Controller {
 	@Autowired
 	protected XRPLTokenPredictorService xRPLTokenPredictorService;
 	
+	//model retrains itself weekly
 	@GetMapping(value = "/learning/predict/model/train}")
 	public void trainModel() {
 		
@@ -35,9 +36,9 @@ public class Controller {
 
 	
 	@GetMapping(value = "/learning/predict/issuedtoken/price/{tokenId}")
-	public PredictionConfig getHolderofferbyvalueById(@PathVariable int tokenId) {
+	public Prediction getHolderofferbyvalueById(@PathVariable int tokenId) {
 		
-		return xRPLTokenPredictorService.trainAndPredict(tokenId);
+		return xRPLTokenPredictorService.predict(tokenId);
 		
 	}
 }
