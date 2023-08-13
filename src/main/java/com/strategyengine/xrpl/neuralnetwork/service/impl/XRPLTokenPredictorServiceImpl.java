@@ -1,7 +1,9 @@
 package com.strategyengine.xrpl.neuralnetwork.service.impl;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +14,6 @@ import java.util.stream.Collectors;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.SplitTestAndTrain;
-import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.learning.config.Adam;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
@@ -48,7 +49,10 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 	@Autowired
 	private IssuedTokenStatRepo issuedTokenStatRepo;
 
-	//TODO -- add XRP price for each row
+	// TODO
+	// add XRP price for each row
+	// add 10 day moving average
+	// add 30 day moving average
 	int FIELD_CREATE_DATE = 0;
 	int FIELD_ISSUED_AMOUNT = 1;
 	int FIELD_TRUSTLINES = 2;
@@ -56,44 +60,43 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 	int FIELD_OFFERS = 4;
 	int FIELD_ID = 5;
 	int FIELD_PRICE = 6;
-//	int FIELD_EXCHANGES7 = 7;
-//	int FIELD_VOL1 = 8;
+	int FIELD_MA_10d = 7;
+	int FIELD_MA_30d = 8;
 //	int FIELD_VOL7 = 9;
 
-	private int numInputs = 7;
+	private int numInputs = 9;
 
 	private int numOutputs = 1;
 
 	private int predictDaysInFuture = 5;// number of days in the future to predict a price
 
 	private NeuralNetworkModel bestModel = null;
-	
+
 	private NeuralNetworkModel model = null;
-	
+
 	@Override
 	public Prediction predict(int tokenId) {
-		
-		if(bestModel == null) {
+
+		if (bestModel == null) {
 			throw new BadRequestException("No model trained yet, please try back later");
 		}
-		
+
 		Optional<IssuedTokenEnt> issuedToken = issuedTokenRepo.findById(tokenId);
-		
-		if(issuedToken.isEmpty()) {
+
+		if (issuedToken.isEmpty()) {
 			throw new BadRequestException("No issued token found for " + tokenId);
 		}
-		
+
 		return this.predict(issuedToken.get(), bestModel);
 	}
 
-	//every 7 days
-	@Scheduled(fixedRate=1000*60*60*24*7)
+	// every 7 days
+	@Scheduled(fixedRate = 1000 * 60 * 60 * 24 * 7)
 	@Override
 	public PredictionConfig retrainModel() {
-		return this.trainAndPredict(6050);//FSE token used to validation
+		return this.trainAndPredict(6050);// FSE token used to validation
 	}
 
-	
 	public PredictionConfig trainAndPredict(int tokenId) {
 
 		int numHiddenNodes = 1;// 1;//5;//10;20;
@@ -106,51 +109,22 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 
 		for (int i = 1; i < 50; i++) {
 
-			numHiddenNodes = numHiddenNodes++;
-			numEpochs = numEpochs++;
+			numHiddenNodes++;
+			numEpochs++;
 
 			for (int epochRun = numEpochs; epochRun > 0; epochRun--) {
 
-				for (double learningRateRun = learningRate; learningRateRun < (Adam.DEFAULT_ADAM_LEARNING_RATE
-						* 5); learningRateRun += .001) {
+				for (double learningRateRun = learningRate; learningRateRun <= (Adam.DEFAULT_ADAM_LEARNING_RATE
+						* 2); learningRateRun += .001) {
 
 					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
 							LossFunctions.LossFunction.MEAN_ABSOLUTE_ERROR, best, tokenId);
 					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.COSINE_PROXIMITY, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.HINGE, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.KL_DIVERGENCE, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.L1, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
 							LossFunctions.LossFunction.L2, best, tokenId);
-					// best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-					// LossFunctions.LossFunction.MCXENT, best, tokenId);
 					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
 							LossFunctions.LossFunction.MEAN_ABSOLUTE_PERCENTAGE_ERROR, best, tokenId);
 					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.MEAN_SQUARED_LOGARITHMIC_ERROR, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
 							LossFunctions.LossFunction.MSE, best, tokenId);
-					// best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-					// LossFunctions.LossFunction.NEGATIVELOGLIKELIHOOD, best, tokenId);
-
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.POISSON, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.RECONSTRUCTION_CROSSENTROPY, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.SQUARED_HINGE, best, tokenId);
-					// best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-					// LossFunctions.LossFunction.SPARSE_MCXENT, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.SQUARED_LOSS, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.WASSERSTEIN, best, tokenId);
-					// best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-					// LossFunctions.LossFunction.XENT, best, tokenId);
 
 				}
 			}
@@ -167,7 +141,7 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 	private PredictionConfig runScenario(int epochRun, double learningRateRun, int numHiddenNodes, int numEpochs,
 			LossFunction lossFunction, PredictionConfig best, int tokenId) {
 		runCount++;
-		if(runCount%20==0) {
+		if (runCount % 20 == 0) {
 			log.info("Runs " + runCount);
 		}
 		try {
@@ -183,7 +157,7 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 						.sumErrors(sumErrors).build();
 
 				log.info("Better config found \n" + best);
-				
+
 				bestModel = model;
 			}
 
@@ -200,12 +174,13 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			LossFunctions.LossFunction lossFunction, int tokenId) {
 
 		// Build the neural network model
-		 model = buildModel(numHiddenNodes, learningRate, lossFunction);
+		model = buildModel(numHiddenNodes, learningRate, lossFunction);
 
 		IssuedTokenEnt token = issuedTokenRepo.findById(tokenId).get();
-				
+
 		boolean trainUsingAllTokens = true;
-		if (!trainUsingAllTokens) {;
+		if (!trainUsingAllTokens) {
+			;
 			trainModel(token, model, numEpochs);
 		} else {
 			issuedTokenRepo.findAll(Example.of(IssuedTokenEnt.builder().blackholed(true).build())).stream()
@@ -229,11 +204,11 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			statsForToken = issuedTokenStatRepo
 					.findAll(Example.of(IssuedTokenStatEnt.builder().issuedTokenId(token.getId()).build()),
 							Sort.by(Direction.ASC, "createDate"))
-					.stream().filter(t -> t.getPrice() != null).collect(Collectors.toList());
+					.stream().filter(t -> t.getPrice() != null && t.getPrice().compareTo(BigDecimal.ZERO)>0).collect(Collectors.toList());
 
 			statsMap.put(token.getId(), statsForToken);
 		}
-		//start training with at least 15 data points
+		// start training with at least 15 data points
 		for (int maxStat = 15; maxStat + predictDaysInFuture < statsForToken.size(); maxStat++) {
 
 			try {
@@ -247,7 +222,9 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 				double[] outputData = new double[statsSubList.size()]; // Adjust the size based on the number of target
 																		// prices
 
-				statsSubList.stream().forEach(s -> convertDataToInput(s, inputData, i.getAndIncrement()));
+				final List<IssuedTokenStatEnt> statsFnl = new ArrayList<>(statsForToken);
+
+				statsSubList.stream().forEach(s -> convertDataToInput(s, inputData, i.getAndIncrement(), statsFnl));
 
 				i.set(0);
 
@@ -275,10 +252,12 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 
 				DataSet dataSet = new DataSet(inputArray, outputArray);
 
-				//PredictionConfig(numHiddenNodes=1, numEpochs=2, lossFunction=MEAN_ABSOLUTE_ERROR, learningRate=0.001, sumErrors=1074.6160367064178) - no normalize
-				 NormalizerStandardize normalizer = new NormalizerStandardize();
-				 normalizer.fit(dataSet); // Fit the normalizer on your training data
-				 normalizer.transform(dataSet); // Transform both training and test data
+				// PredictionConfig(numHiddenNodes=1, numEpochs=2,
+				// lossFunction=MEAN_ABSOLUTE_ERROR, learningRate=0.001,
+				// sumErrors=1074.6160367064178) - no normalize
+				// NormalizerStandardize normalizer = new NormalizerStandardize();
+				// normalizer.fit(dataSet); // Fit the normalizer on your training data
+				// normalizer.transform(dataSet); // Transform both training and test data
 
 				SplitTestAndTrain testAndTrainSplit = dataSet.splitTestAndTrain(0.8); // 80% for training, 20% for
 																						// testing
@@ -299,22 +278,20 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		List<IssuedTokenStatEnt> statsForToken = statsMap.get(token.getId());
 
 		if (statsForToken == null) {
-			statsForToken = issuedTokenStatRepo
-					.findAll(Example.of(IssuedTokenStatEnt.builder().issuedTokenId(token.getId()).build()));
+			log.error("Could not find stats for " + token);
+			return null;
 		}
 		double[][] tokenInputData = new double[statsForToken.size()][numInputs];
 		AtomicInteger i = new AtomicInteger();
 
-		statsForToken.stream().forEach(s -> convertDataToInput(s, tokenInputData, i.getAndIncrement()));
+		final List<IssuedTokenStatEnt> statsFnl = new ArrayList<>(statsForToken);
+		statsForToken.stream().forEach(s -> convertDataToInput(s, tokenInputData, i.getAndIncrement(), statsFnl));
 
 		if (tokenInputData.length <= 1) {
 			return Prediction.builder().token(token.getCurrency()).build();
 		}
 
 		INDArray tokenFeatures = Nd4j.create(tokenInputData);
-
-		Calendar c = Calendar.getInstance();
-		c.add(Calendar.DATE, predictDaysInFuture);
 
 		// Make predictions for 1 day, 5 days, and 30 days intervals
 		double[] predictedPrices = model.predict(tokenFeatures);
@@ -336,11 +313,27 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		if (mostRecentPrice == 0) {
 			return null;
 		}
+
 		return Prediction.builder().token(token.getCurrency()).sumErrors(sumErrors).mostRecentPrice(mostRecentPrice)
-				.predictionDates(ImmutableList.of(PredictionDate.builder().date(c.getTime())
-						.price(predictedPrices[predictedPrices.length - 1]).build()))
+				.predictionDates(ImmutableList.of(
+						PredictionDate.builder().date(predictedDate(-4))
+								.price(predictedPrices[predictedPrices.length - 5]).build(),
+						PredictionDate.builder().date(predictedDate(-3))
+								.price(predictedPrices[predictedPrices.length - 4]).build(),
+						PredictionDate.builder().date(predictedDate(-2))
+								.price(predictedPrices[predictedPrices.length - 3]).build(),
+						PredictionDate.builder().date(predictedDate(-1))
+								.price(predictedPrices[predictedPrices.length - 2]).build(),
+						PredictionDate.builder().date(predictedDate(0))
+								.price(predictedPrices[predictedPrices.length - 1]).build()))
 				.build();
 
+	}
+
+	private Date predictedDate(int i) {
+		Calendar c = Calendar.getInstance();
+		c.add(Calendar.DATE, predictDaysInFuture - i);
+		return c.getTime();
 	}
 
 	private double sumErrors(double[] predictedPrices, List<IssuedTokenStatEnt> statsForToken) {
@@ -354,7 +347,7 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			}
 
 			double expectedPrice = statsForToken.get(i + predictDaysInFuture).getPrice().doubleValue();
-			
+
 			totalErrors += Math.abs(predictedPrices[i] - expectedPrice);
 
 		}
@@ -367,7 +360,8 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		return new NeuralNetworkModel(numInputs, numOutputs, numHiddenNodes, learningRate, lossFunction);
 	}
 
-	private void convertDataToInput(IssuedTokenStatEnt stat, double[][] inputData, final int idx) {
+	private void convertDataToInput(IssuedTokenStatEnt stat, double[][] inputData, final int idx,
+			List<IssuedTokenStatEnt> statsForToken) {
 
 		inputData[idx][FIELD_CREATE_DATE] = stat.getCreateDate().getTime();
 		inputData[idx][FIELD_ISSUED_AMOUNT] = stat.getIssuedAmount().longValue();
@@ -376,7 +370,27 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		inputData[idx][FIELD_OFFERS] = stat.getOffers();
 		inputData[idx][FIELD_ID] = stat.getIssuedTokenId();
 		inputData[idx][FIELD_PRICE] = stat.getPrice().doubleValue();
+		inputData[idx][FIELD_MA_10d] = averagePrice(stat, statsForToken, 10);
+		inputData[idx][FIELD_MA_30d] = averagePrice(stat, statsForToken, 10);
 
 	}
-	
+
+	private double averagePrice(IssuedTokenStatEnt stat, List<IssuedTokenStatEnt> statsForToken, int averageDays) {
+		int endIdxOfStat = statsForToken.indexOf(stat);
+		int idxOfStat = endIdxOfStat - averageDays;
+		if (idxOfStat < 0) {
+			idxOfStat = 0;
+		}
+		double cnt = 0;
+		double sum = 0;
+		while (idxOfStat <= endIdxOfStat) {
+			sum += statsForToken.get(idxOfStat).getPrice().doubleValue();
+			cnt++;
+			idxOfStat++;
+		}
+
+		return sum / cnt;
+
+	}
+
 }
