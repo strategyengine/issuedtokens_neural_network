@@ -28,6 +28,10 @@ import org.springframework.stereotype.Service;
 
 import com.strategyengine.xrpl.neuralnetwork.entity.IssuedTokenEnt;
 import com.strategyengine.xrpl.neuralnetwork.entity.IssuedTokenStatEnt;
+import com.strategyengine.xrpl.neuralnetwork.metrics.BollingerBandsCalculator;
+import com.strategyengine.xrpl.neuralnetwork.metrics.MovingAverageCalculator;
+import com.strategyengine.xrpl.neuralnetwork.metrics.RsiCalculator;
+import com.strategyengine.xrpl.neuralnetwork.model.BollingerBand;
 import com.strategyengine.xrpl.neuralnetwork.model.Prediction;
 import com.strategyengine.xrpl.neuralnetwork.model.PredictionConfig;
 import com.strategyengine.xrpl.neuralnetwork.model.PredictionDate;
@@ -49,10 +53,19 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 	@Autowired
 	private IssuedTokenStatRepo issuedTokenStatRepo;
 
+	@Autowired
+	private RsiCalculator rsiCalculator;
+
+	@Autowired
+	private MovingAverageCalculator movingAverageCalculator;
+
+	@Autowired
+	private BollingerBandsCalculator bollingerBandsCalculator;
+
 	// TODO
 	// add XRP price for each row
-	// add 10 day moving average
-	// add 30 day moving average
+	// add Relative Strength Index (RSI), Moving Average Convergence Divergence
+	// (MACD), and Bollinger Bands,
 	int FIELD_CREATE_DATE = 0;
 	int FIELD_ISSUED_AMOUNT = 1;
 	int FIELD_TRUSTLINES = 2;
@@ -62,9 +75,15 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 	int FIELD_PRICE = 6;
 	int FIELD_MA_10d = 7;
 	int FIELD_MA_30d = 8;
+	int FIELD_RSI = 9;
+	int FIELD_BOLLINGER_UPPER = 10;
+	int FIELD_BOLLINGER_LOWER = 11;
+	int FIELD_BOLLINGER_SMA = 12;
+	int FIELD_BOLLINGER_STANDARD_DEV = 13;
+
 //	int FIELD_VOL7 = 9;
 
-	private int numInputs = 9;
+	private int numInputs = 14;
 
 	private int numOutputs = 1;
 
@@ -204,7 +223,8 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			statsForToken = issuedTokenStatRepo
 					.findAll(Example.of(IssuedTokenStatEnt.builder().issuedTokenId(token.getId()).build()),
 							Sort.by(Direction.ASC, "createDate"))
-					.stream().filter(t -> t.getPrice() != null && t.getPrice().compareTo(BigDecimal.ZERO)>0).collect(Collectors.toList());
+					.stream().filter(t -> t.getPrice() != null && t.getPrice().compareTo(BigDecimal.ZERO) > 0)
+					.collect(Collectors.toList());
 
 			statsMap.put(token.getId(), statsForToken);
 		}
@@ -370,26 +390,24 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		inputData[idx][FIELD_OFFERS] = stat.getOffers();
 		inputData[idx][FIELD_ID] = stat.getIssuedTokenId();
 		inputData[idx][FIELD_PRICE] = stat.getPrice().doubleValue();
-		inputData[idx][FIELD_MA_10d] = averagePrice(stat, statsForToken, 10);
-		inputData[idx][FIELD_MA_30d] = averagePrice(stat, statsForToken, 10);
+		inputData[idx][FIELD_MA_10d] = movingAverageCalculator.averagePrice(stat, statsForToken, 10);
+		inputData[idx][FIELD_MA_30d] = movingAverageCalculator.averagePrice(stat, statsForToken, 10);
 
-	}
-
-	private double averagePrice(IssuedTokenStatEnt stat, List<IssuedTokenStatEnt> statsForToken, int averageDays) {
-		int endIdxOfStat = statsForToken.indexOf(stat);
-		int idxOfStat = endIdxOfStat - averageDays;
-		if (idxOfStat < 0) {
-			idxOfStat = 0;
-		}
-		double cnt = 0;
-		double sum = 0;
-		while (idxOfStat <= endIdxOfStat) {
-			sum += statsForToken.get(idxOfStat).getPrice().doubleValue();
-			cnt++;
-			idxOfStat++;
+		Optional<Double> rsi = rsiCalculator.calculateRSI(stat, statsForToken);
+		if (rsi.isPresent()) {
+			inputData[idx][FIELD_RSI] = rsi.get();
 		}
 
-		return sum / cnt;
+		Optional<BollingerBand> bollingerBand = bollingerBandsCalculator.calculateBollingerBands(stat, statsForToken);
+
+		if (bollingerBand.isPresent()) {
+			BollingerBand bb = bollingerBand.get();
+			inputData[idx][FIELD_BOLLINGER_UPPER] = bb.getUpperBand()[bb.getUpperBand().length - 1];
+			inputData[idx][FIELD_BOLLINGER_LOWER] = bb.getLowerBand()[bb.getLowerBand().length - 1];
+			inputData[idx][FIELD_BOLLINGER_SMA] = bb.getSma()[bb.getSma().length - 1];
+			inputData[idx][FIELD_BOLLINGER_STANDARD_DEV] = bb.getStandardDeviation()[bb.getStandardDeviation().length
+					- 1];
+		}
 
 	}
 
