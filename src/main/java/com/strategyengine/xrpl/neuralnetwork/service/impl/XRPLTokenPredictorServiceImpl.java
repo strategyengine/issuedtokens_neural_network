@@ -173,7 +173,7 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 
 				best = PredictionConfig.builder().numEpochs(numEpochs).learningRate(learningRateRun)
 						.lossFunction(lossFunction).numHiddenNodes(numHiddenNodes).prediction(predictions)
-						.sumErrors(sumErrors).build();
+						.sumErrors(sumErrors==Double.NaN ? Double.MAX_VALUE : sumErrors).build();
 
 				log.info("Better config found \n" + best);
 
