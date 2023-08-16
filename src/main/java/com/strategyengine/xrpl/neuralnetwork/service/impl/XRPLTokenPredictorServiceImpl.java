@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.SplitTestAndTrain;
+import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.learning.config.Adam;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
@@ -203,6 +204,9 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			trainModel(token, model, numEpochs);
 		} else {
 			issuedTokenRepo.findAll(Example.of(IssuedTokenEnt.builder().blackholed(true).build())).stream()
+			//.filter(t -> "FSE".equals(t.getCurrency()))//TODO REMOVE
+			//.filter(t -> t.getId() <= 6050)//TODO REMOVE
+			
 					.forEach(y -> trainModel(y, model, numEpochs));
 		}
 
@@ -223,7 +227,8 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			statsForToken = issuedTokenStatRepo
 					.findAll(Example.of(IssuedTokenStatEnt.builder().issuedTokenId(token.getId()).build()),
 							Sort.by(Direction.ASC, "createDate"))
-					.stream().filter(t -> t.getPrice() != null && t.getPrice().compareTo(BigDecimal.ZERO) > 0)
+					.stream()
+					.filter(t -> t.getPrice() != null && t.getPrice().compareTo(BigDecimal.ZERO) > 0)
 					.collect(Collectors.toList());
 
 			statsMap.put(token.getId(), statsForToken);
@@ -275,9 +280,9 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 				// PredictionConfig(numHiddenNodes=1, numEpochs=2,
 				// lossFunction=MEAN_ABSOLUTE_ERROR, learningRate=0.001,
 				// sumErrors=1074.6160367064178) - no normalize
-				// NormalizerStandardize normalizer = new NormalizerStandardize();
-				// normalizer.fit(dataSet); // Fit the normalizer on your training data
-				// normalizer.transform(dataSet); // Transform both training and test data
+				 NormalizerStandardize normalizer = new NormalizerStandardize();
+				 normalizer.fit(dataSet); // Fit the normalizer on your training data
+				 normalizer.transform(dataSet); // Transform both training and test data
 
 				SplitTestAndTrain testAndTrainSplit = dataSet.splitTestAndTrain(0.8); // 80% for training, 20% for
 																						// testing
@@ -394,18 +399,18 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		inputData[idx][FIELD_MA_30d] = movingAverageCalculator.averagePrice(stat, statsForToken, 10);
 
 		Optional<Double> rsi = rsiCalculator.calculateRSI(stat, statsForToken);
-		if (rsi.isPresent()) {
-			inputData[idx][FIELD_RSI] = rsi.get();
+		if (rsi.isPresent() ) {
+			inputData[idx][FIELD_RSI] =rsi.get();
 		}
 
 		Optional<BollingerBand> bollingerBand = bollingerBandsCalculator.calculateBollingerBands(stat, statsForToken);
 
 		if (bollingerBand.isPresent()) {
 			BollingerBand bb = bollingerBand.get();
-			inputData[idx][FIELD_BOLLINGER_UPPER] = bb.getUpperBand()[bb.getUpperBand().length - 1];
-			inputData[idx][FIELD_BOLLINGER_LOWER] = bb.getLowerBand()[bb.getLowerBand().length - 1];
-			inputData[idx][FIELD_BOLLINGER_SMA] = bb.getSma()[bb.getSma().length - 1];
-			inputData[idx][FIELD_BOLLINGER_STANDARD_DEV] = bb.getStandardDeviation()[bb.getStandardDeviation().length
+			inputData[idx][FIELD_BOLLINGER_UPPER]  bollingerBand.get().getUpperBand()[bollingerBand.get().getUpperBand().length - 1];
+			inputData[idx][FIELD_BOLLINGER_LOWER]  bollingerBand.get().getLowerBand()[bollingerBand.get().getLowerBand().length - 1];
+			inputData[idx][FIELD_BOLLINGER_SMA]  bollingerBand.get().getSma()[bollingerBand.get().getSma().length - 1];
+			inputData[idx][FIELD_BOLLINGER_STANDARD_DEV]  bollingerBand.get().getStandardDeviation()[bollingerBand.get().getStandardDeviation().length
 					- 1];
 		}
 

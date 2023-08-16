@@ -1,10 +1,16 @@
 package com.strategyengine.xrpl.neuralnetwork.process.model;
 
+import org.deeplearning4j.nn.api.OptimizationAlgorithm;
+import org.deeplearning4j.nn.conf.BackpropType;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
+import org.deeplearning4j.nn.conf.Updater;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.GravesLSTM;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
+import org.deeplearning4j.nn.conf.layers.RnnOutputLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
+import org.deeplearning4j.nn.weights.WeightInit;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
@@ -16,20 +22,28 @@ public class NeuralNetworkModel {
 
 	public NeuralNetworkModel(int numInputs, int numOutputs, int numHiddenNodes, double learningRate,
 			LossFunctions.LossFunction lossFunction) {
-		// Define the neural network architecture
+
+
+		int seed = 12345;
+	
 		model = new MultiLayerNetwork(new NeuralNetConfiguration.Builder()
-				.gradientNormalization(GradientNormalization.ClipElementWiseAbsoluteValue)
-				.gradientNormalizationThreshold(1.0).seed(1234).updater(new Adam(learningRate)).list()
+				//.gradientNormalization(GradientNormalization.ClipElementWiseAbsoluteValue)
+				.optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)  .weightInit(WeightInit.XAVIER).updater(Updater.ADAGRAD)
+				//.gradientNormalizationThreshold(1.0)
+				.seed(seed).updater(new Adam(learningRate)).list()
 				.layer(0,
-						new DenseLayer.Builder().nIn(numInputs).nOut(numHiddenNodes).activation(Activation.RELU)
+						new DenseLayer.Builder().nIn(numInputs).nOut(numHiddenNodes).activation(Activation.SOFTSIGN)
 								.build())//Dense = every neuron connected to every other neuron
 				
 				.layer(1, new OutputLayer.Builder() // Use OutputLayer instead of DenseLayer
 						.nIn(numHiddenNodes).nOut(numOutputs).activation(Activation.IDENTITY) // Or other appropriate
 																								// activation function
 						.lossFunction(lossFunction) // Choose an appropriate loss function
-						.build())
+						
+						.build())	  	  
 				.build());
+		
+
 		model.init();
 	}
 

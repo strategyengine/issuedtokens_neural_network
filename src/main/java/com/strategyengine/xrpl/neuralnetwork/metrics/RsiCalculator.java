@@ -45,10 +45,17 @@ public class RsiCalculator {
 
         averageGain /= period;
         averageLoss /= period;
+        
+        if(averageLoss==0) {
+        	return Optional.empty();
+        }
 
         double rs = averageGain / averageLoss;
         double rsi = 100 - (100 / (1 + rs));
 
+        if(Double.isNaN(rsi)) {
+        	return Optional.empty();
+        }
         return Optional.of(rsi);
     }
 }
