@@ -1,8 +1,8 @@
 package com.strategyengine.xrpl.neuralnetwork.model;
 
-import java.util.Map;
-
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+
+import com.strategyengine.xrpl.neuralnetwork.process.model.NeuralNetworkModel;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -28,8 +28,9 @@ public class PredictionConfig {
 	private LossFunctions.LossFunction lossFunction;
 	private double learningRate;
 
-	private double sumErrors;
+	private Prediction prediction;
+
 	@ToString.Exclude
-	private Map<Integer, Prediction> prediction;
+	private NeuralNetworkModel model;
 
 }

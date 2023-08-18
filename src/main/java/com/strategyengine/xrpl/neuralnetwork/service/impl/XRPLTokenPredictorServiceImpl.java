@@ -90,14 +90,12 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 
 	private int predictDaysInFuture = 5;// number of days in the future to predict a price
 
-	private NeuralNetworkModel bestModel = null;
-
-	private NeuralNetworkModel model = null;
+	private Map<Integer, NeuralNetworkModel> models = new HashMap<>();
 
 	@Override
 	public Prediction predict(int tokenId) {
 
-		if (bestModel == null) {
+		if (models.get(tokenId) == null) {
 			throw new BadRequestException("No model trained yet, please try back later");
 		}
 
@@ -107,47 +105,56 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			throw new BadRequestException("No issued token found for " + tokenId);
 		}
 
-		return this.predict(issuedToken.get(), bestModel);
+		return this.predict(issuedToken.get(), models.get(tokenId));
 	}
 
 	// every 7 days
 	@Scheduled(fixedRate = 1000 * 60 * 60 * 24 * 7)
 	@Override
-	public PredictionConfig retrainModel() {
-		return this.trainAndPredict(6050);// FSE token used to validation
+	public void retrainModel() {
+
+		issuedTokenRepo.findAll(Example.of(IssuedTokenEnt.builder().blackholed(true).build()), Sort.by("id")).stream()
+				.forEach(t -> trainAndPredict(t));
+
 	}
 
-	public PredictionConfig trainAndPredict(int tokenId) {
+	public PredictionConfig trainAndPredict(IssuedTokenEnt token) {
 
-		int numHiddenNodes = 1;// 1;//5;//10;20;
+	//	if (!token.getCurrency().equals("FSE")) {// TODO remove
+	//		return null;
+	//	}
+		// 5:3 - 147
 
-		int numEpochs = 2;
+		// 50:30 - 123 after 10
+		// PredictionConfig(numHiddenNodes=51, numEpochs=28,
+		// lossFunction=MEAN_ABSOLUTE_ERROR, learningRate=0.001,
+		// prediction=Prediction(token=FSE, sumErrors=123.54745043076362,
+		// mostRecentPrice=2.131),
+		// model=com.strategyengine.xrpl.neuralnetwork.process.model.NeuralNetworkModel@15c66e43)
+		// 2 mins per 5 iterations
+		// 100:60 - 127 after 5
+		// 50: 200 - 140
+		// 40:40 -121
+		// 30:30 - 140
+		// 40:30 - 128
+		// 40:20 - 127
+		// 45:40 -127
+
+		int numHiddenNodes = 40;// 1;//5;//10;20;
+
+		int numEpochs = 40;
 
 		double learningRate = Adam.DEFAULT_ADAM_LEARNING_RATE;
 
 		PredictionConfig best = null;
 
-		for (int i = 1; i < 50; i++) {
+		for (int i = 1; i < 2; i++) {
 
 			numHiddenNodes++;
-			numEpochs++;
 
-			for (int epochRun = numEpochs; epochRun > 0; epochRun--) {
+				best = runScenario(learningRate, numHiddenNodes, numEpochs,
+						LossFunctions.LossFunction.MEAN_ABSOLUTE_ERROR, best, token);
 
-				for (double learningRateRun = learningRate; learningRateRun <= (Adam.DEFAULT_ADAM_LEARNING_RATE
-						* 2); learningRateRun += .001) {
-
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.MEAN_ABSOLUTE_ERROR, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.L2, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.MEAN_ABSOLUTE_PERCENTAGE_ERROR, best, tokenId);
-					best = runScenario(epochRun, learningRateRun, numHiddenNodes, numEpochs,
-							LossFunctions.LossFunction.MSE, best, tokenId);
-
-				}
-			}
 		}
 
 		log.info("Best config " + best);
@@ -158,27 +165,29 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 
 	int runCount = 0;
 
-	private PredictionConfig runScenario(int epochRun, double learningRateRun, int numHiddenNodes, int numEpochs,
-			LossFunction lossFunction, PredictionConfig best, int tokenId) {
+	private PredictionConfig runScenario(double learningRateRun, int numHiddenNodes, int numEpochs,
+			LossFunction lossFunction, PredictionConfig best, IssuedTokenEnt token) {
 		runCount++;
-		if (runCount % 20 == 0) {
-			log.info("Runs " + runCount);
-		}
+
 		try {
-			Map<Integer, Prediction> predictions = trainAndPredict(epochRun, numHiddenNodes, learningRateRun,
-					lossFunction, tokenId);
+			PredictionConfig predictionConfig = trainAndPredict(numEpochs, numHiddenNodes, learningRateRun,
+					lossFunction, token);
 
-			double sumErrors = predictions.get(tokenId).getSumErrors();
+			double averagePercentError = predictionConfig.getPrediction().getAveragePercentError();
 
-			if (best == null || sumErrors < best.getSumErrors()) {
+			if (best == null || averagePercentError < best.getPrediction().getAveragePercentError()) {
 
-				best = PredictionConfig.builder().numEpochs(numEpochs).learningRate(learningRateRun)
-						.lossFunction(lossFunction).numHiddenNodes(numHiddenNodes).prediction(predictions)
-						.sumErrors(sumErrors==Double.NaN ? Double.MAX_VALUE : sumErrors).build();
+				best = predictionConfig;
 
 				log.info("Better config found \n" + best);
 
-				bestModel = model;
+				if(predictionConfig.getPrediction().getAveragePercentError() < 40) {
+					models.put(token.getId(), predictionConfig.getModel());
+				}
+			}
+
+			if (runCount % 5 == 0) {
+				log.info("Run {}", predictionConfig);
 			}
 
 		} catch (Exception e) {
@@ -190,34 +199,20 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 
 	Map<Integer, List<IssuedTokenStatEnt>> statsMap = new HashMap<>();
 
-	public Map<Integer, Prediction> trainAndPredict(int numEpochs, int numHiddenNodes, double learningRate,
-			LossFunctions.LossFunction lossFunction, int tokenId) {
+	public PredictionConfig trainAndPredict(int numEpochs, int numHiddenNodes, double learningRate,
+			LossFunctions.LossFunction lossFunction, IssuedTokenEnt token) {
 
 		// Build the neural network model
-		model = buildModel(numHiddenNodes, learningRate, lossFunction);
+		NeuralNetworkModel model = new NeuralNetworkModel(numInputs, numOutputs, numHiddenNodes, learningRate,
+				lossFunction);
 
-		IssuedTokenEnt token = issuedTokenRepo.findById(tokenId).get();
-
-		boolean trainUsingAllTokens = true;
-		if (!trainUsingAllTokens) {
-			;
-			trainModel(token, model, numEpochs);
-		} else {
-			issuedTokenRepo.findAll(Example.of(IssuedTokenEnt.builder().blackholed(true).build())).stream()
-			//.filter(t -> "FSE".equals(t.getCurrency()))//TODO REMOVE
-			//.filter(t -> t.getId() <= 6050)//TODO REMOVE
-			
-					.forEach(y -> trainModel(y, model, numEpochs));
-		}
-
-		Map<Integer, Prediction> preds = new HashMap<>();
+		trainModel(token, model, numEpochs);
 
 		Prediction pred = predict(token, model);
-		if (pred != null) {
-			preds.put(token.getId(), pred);
-		}
 
-		return preds;
+		return PredictionConfig.builder().numEpochs(numEpochs).learningRate(learningRate).lossFunction(lossFunction)
+				.numHiddenNodes(numHiddenNodes).prediction(pred).model(model).build();
+
 	}
 
 	private void trainModel(IssuedTokenEnt token, NeuralNetworkModel model, int numEpochs) {
@@ -227,8 +222,7 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			statsForToken = issuedTokenStatRepo
 					.findAll(Example.of(IssuedTokenStatEnt.builder().issuedTokenId(token.getId()).build()),
 							Sort.by(Direction.ASC, "createDate"))
-					.stream()
-					.filter(t -> t.getPrice() != null && t.getPrice().compareTo(BigDecimal.ZERO) > 0)
+					.stream().filter(t -> t.getPrice() != null && t.getPrice().compareTo(BigDecimal.ZERO) > 0)
 					.collect(Collectors.toList());
 
 			statsMap.put(token.getId(), statsForToken);
@@ -277,12 +271,13 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 
 				DataSet dataSet = new DataSet(inputArray, outputArray);
 
-				// PredictionConfig(numHiddenNodes=1, numEpochs=2,
-				// lossFunction=MEAN_ABSOLUTE_ERROR, learningRate=0.001,
-				// sumErrors=1074.6160367064178) - no normalize
-				 NormalizerStandardize normalizer = new NormalizerStandardize();
-				 normalizer.fit(dataSet); // Fit the normalizer on your training data
-				 normalizer.transform(dataSet); // Transform both training and test data
+				// sum errors after 20 iterations
+				// 156 Norm and not denormalized
+				// 1055 not norm or denorm
+				// 42800000000000000 norm and denorm
+				NormalizerStandardize normalizer = new NormalizerStandardize();
+				normalizer.fit(dataSet); // Fit the normalizer on your training data
+				normalizer.transform(dataSet); // Transform both training and test data
 
 				SplitTestAndTrain testAndTrainSplit = dataSet.splitTestAndTrain(0.8); // 80% for training, 20% for
 																						// testing
@@ -316,12 +311,45 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			return Prediction.builder().token(token.getCurrency()).build();
 		}
 
-		INDArray tokenFeatures = Nd4j.create(tokenInputData);
+		double[] outputData = new double[tokenInputData.length];
+		INDArray inputArray = Nd4j.create(tokenInputData);
+		INDArray outputArray = Nd4j.create(outputData).reshape(-1, 1);
 
-		// Make predictions for 1 day, 5 days, and 30 days intervals
-		double[] predictedPrices = model.predict(tokenFeatures);
+		DataSet dataSet = new DataSet(inputArray, outputArray);
 
-		double sumErrors = sumErrors(predictedPrices, statsForToken);
+		// PredictionConfig(numHiddenNodes=1, numEpochs=2,
+		// lossFunction=MEAN_ABSOLUTE_ERROR, learningRate=0.001,
+		// sumErrors=1074.6160367064178) - no normalize
+		NormalizerStandardize normalizer = new NormalizerStandardize();
+		normalizer.fit(dataSet); // Fit the normalizer on your training data
+		normalizer.transform(dataSet); // Transform both training and test data
+
+		// Make a normalized prediction
+		double[] predictedPrices = model.predict(dataSet.getFeatures());
+		/**
+		 * double[] normalizedPredictedValue = model.predict(dataSet.getFeatures());
+		 * 
+		 * INDArray tempFeatures = Nd4j.create(tokenInputData); // Create an INDArray
+		 * with the same shape as input data // INDArray normalizedPredictionArray =
+		 * Nd4j.create(normalizedPredictedValue); // Your normalized prediction array
+		 * 
+		 * 
+		 * // Copy the normalized prediction values into the appropriate positions in
+		 * the features array for (int j = 0; j < normalizedPredictedValue.length; j++)
+		 * { tempFeatures.putScalar(j, numInputs - 1, normalizedPredictedValue[j]); //
+		 * Assuming the last column corresponds to the prediction column }
+		 * 
+		 * DataSet tempDataSet = new DataSet(tempFeatures, tempFeatures); // Use the
+		 * modified features array for both features and labels
+		 * 
+		 * normalizer.revert(tempDataSet);
+		 * 
+		 * Object o = tempDataSet.getFeatures();
+		 * 
+		 * double[] predictedPrices = tempDataSet.getFeatures().dup().data().asDouble();
+		 */
+
+		double averagePercentError = averagePercentError(predictedPrices, statsForToken);
 
 		double mostRecentPrice = 0;
 		for (int p = statsForToken.size() - 1; p > 0; p--) {
@@ -339,7 +367,7 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			return null;
 		}
 
-		return Prediction.builder().token(token.getCurrency()).sumErrors(sumErrors).mostRecentPrice(mostRecentPrice)
+		return Prediction.builder().token(token.getCurrency()).averagePercentError(averagePercentError).mostRecentPrice(mostRecentPrice)
 				.predictionDates(ImmutableList.of(
 						PredictionDate.builder().date(predictedDate(-4))
 								.price(predictedPrices[predictedPrices.length - 5]).build(),
@@ -361,9 +389,9 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		return c.getTime();
 	}
 
-	private double sumErrors(double[] predictedPrices, List<IssuedTokenStatEnt> statsForToken) {
+	private double averagePercentError(double[] predictedPrices, List<IssuedTokenStatEnt> statsForToken) {
 
-		double totalErrors = 0;
+		double percentErrorsSum = 0;
 
 		for (int i = 0; i < predictedPrices.length; i++) {
 
@@ -372,17 +400,13 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 			}
 
 			double expectedPrice = statsForToken.get(i + predictDaysInFuture).getPrice().doubleValue();
-
-			totalErrors += Math.abs(predictedPrices[i] - expectedPrice);
+			double predictedPrice = predictedPrices[i];
+			double percentErr = (predictedPrice - expectedPrice)/expectedPrice;
+			percentErrorsSum += Math.abs(percentErr);
 
 		}
 
-		return totalErrors;
-	}
-
-	private NeuralNetworkModel buildModel(int numHiddenNodes, double learningRate,
-			LossFunctions.LossFunction lossFunction) {
-		return new NeuralNetworkModel(numInputs, numOutputs, numHiddenNodes, learningRate, lossFunction);
+		return (percentErrorsSum / statsForToken.size())*100;
 	}
 
 	private void convertDataToInput(IssuedTokenStatEnt stat, double[][] inputData, final int idx,
@@ -399,18 +423,18 @@ public class XRPLTokenPredictorServiceImpl implements XRPLTokenPredictorService 
 		inputData[idx][FIELD_MA_30d] = movingAverageCalculator.averagePrice(stat, statsForToken, 10);
 
 		Optional<Double> rsi = rsiCalculator.calculateRSI(stat, statsForToken);
-		if (rsi.isPresent() ) {
-			inputData[idx][FIELD_RSI] =rsi.get();
+		if (rsi.isPresent()) {
+			inputData[idx][FIELD_RSI] = rsi.get();
 		}
 
 		Optional<BollingerBand> bollingerBand = bollingerBandsCalculator.calculateBollingerBands(stat, statsForToken);
 
 		if (bollingerBand.isPresent()) {
 			BollingerBand bb = bollingerBand.get();
-			inputData[idx][FIELD_BOLLINGER_UPPER]  bollingerBand.get().getUpperBand()[bollingerBand.get().getUpperBand().length - 1];
-			inputData[idx][FIELD_BOLLINGER_LOWER]  bollingerBand.get().getLowerBand()[bollingerBand.get().getLowerBand().length - 1];
-			inputData[idx][FIELD_BOLLINGER_SMA]  bollingerBand.get().getSma()[bollingerBand.get().getSma().length - 1];
-			inputData[idx][FIELD_BOLLINGER_STANDARD_DEV]  bollingerBand.get().getStandardDeviation()[bollingerBand.get().getStandardDeviation().length
+			inputData[idx][FIELD_BOLLINGER_UPPER] = bb.getUpperBand()[bb.getUpperBand().length - 1];
+			inputData[idx][FIELD_BOLLINGER_LOWER] = bb.getLowerBand()[bb.getLowerBand().length - 1];
+			inputData[idx][FIELD_BOLLINGER_SMA] = bb.getSma()[bb.getSma().length - 1];
+			inputData[idx][FIELD_BOLLINGER_STANDARD_DEV] = bb.getStandardDeviation()[bb.getStandardDeviation().length
 					- 1];
 		}
 

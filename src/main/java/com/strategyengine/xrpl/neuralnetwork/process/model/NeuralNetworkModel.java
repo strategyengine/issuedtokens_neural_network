@@ -24,7 +24,7 @@ public class NeuralNetworkModel {
 			LossFunctions.LossFunction lossFunction) {
 
 
-		int seed = 12345;
+		int seed = 54321;
 	
 		model = new MultiLayerNetwork(new NeuralNetConfiguration.Builder()
 				//.gradientNormalization(GradientNormalization.ClipElementWiseAbsoluteValue)

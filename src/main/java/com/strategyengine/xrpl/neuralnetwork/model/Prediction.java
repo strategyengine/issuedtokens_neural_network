@@ -21,12 +21,13 @@ public class Prediction {
 
 	private String token;
 	
-	private double sumErrors;
+	private double averagePercentError;
 	
+
+	@ToString.Exclude
 	private List<PredictionDate> predictionDates;
 	
 	private double mostRecentPrice;
-
 	
 	
 }
